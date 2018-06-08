@@ -13,7 +13,7 @@ from config import ATT_DA, ATT_R, MLP_HIDDEN_SIZE
 from config import KEEP_PROB, LEARNING_RATE
 from config import LAMBDA_L2, EPOCH
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 """Log Configuration"""
 LOG_FILE = './log/train.log'

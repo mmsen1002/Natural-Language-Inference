@@ -20,9 +20,8 @@
 rm -f ./save_model/*
 rm -f ./graphs/*
 rm -f ./log/*
-rm -f ./result/*
-rm -f ./data/ccks/save/*
-rm -f ./data/ccks/train/*
-rm -f ./data/ccks/dev/*
+#rm -f ./data/ccks/save/*
+#rm -f ./data/ccks/train/*
+#rm -f ./data/ccks/dev/*
 
 #******************** End Of File: clear.sh ********************/

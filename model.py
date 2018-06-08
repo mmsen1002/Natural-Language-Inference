@@ -6,6 +6,7 @@ import logging.config
 from nn import highway
 from nn import self_attention
 from nn import mlp
+from nn import bidaf
 from utils import read_dataset
 from utils import evaluation_rate
 
@@ -127,6 +128,7 @@ class Model:
             self.query_embed = tf.concat(
                 [self.query_word_embed, self.query_pos_embed], axis=-1)
             """
+        with tf.variable_scope("highway_layer", reuse=tf.AUTO_REUSE):
             # highway network layer
             self.passage_embed = highway(
                 self.passage_embed,
@@ -144,19 +146,22 @@ class Model:
         print("_create_embedding and highway layer worked")
 
     def _create_bgrucell(self):
-        with tf.variable_scope("bgru_layer"):
-            cell_fw = tf.contrib.cudnn_rnn.CudnnCompatibleGRUCell(
-                num_units=self.rnn_cell_size,
-                #kernel_initializer=tf.orthogonal_initializer(seed=115))
-                kernel_initializer=tf.truncated_normal_initializer(
-                    mean=0.0, stddev=0.1, seed=114))
-            cell_bw = tf.contrib.cudnn_rnn.CudnnCompatibleGRUCell(
-                num_units=self.rnn_cell_size,
-                #kernel_initializer=tf.orthogonal_initializer(seed=116))
-                kernel_initializer=tf.truncated_normal_initializer(
-                    mean=0.0, stddev=0.1, seed=115))
+        cell_fw = tf.contrib.cudnn_rnn.CudnnCompatibleGRUCell(
+            num_units=self.rnn_cell_size,
+            #kernel_initializer=tf.orthogonal_initializer(seed=115))
+            kernel_initializer=tf.truncated_normal_initializer(
+                mean=0.0, stddev=0.1, seed=114))
+        cell_bw = tf.contrib.cudnn_rnn.CudnnCompatibleGRUCell(
+            num_units=self.rnn_cell_size,
+            #kernel_initializer=tf.orthogonal_initializer(seed=116))
+            kernel_initializer=tf.truncated_normal_initializer(
+                mean=0.0, stddev=0.1, seed=115))
+            # dropout
+        cell_fw = tf.contrib.rnn.DropoutWrapper(
+            cell_fw, output_keep_prob=self.keep_prob)
+        cell_bw = tf.contrib.rnn.DropoutWrapper(
+            cell_bw, output_keep_prob=self.keep_prob)
 
-        print("_create_bgrucell function worked")
         return cell_fw, cell_bw
 
     def _create_blstm_cell(self):
@@ -168,13 +173,12 @@ class Model:
         cell_bw = tf.contrib.rnn.DropoutWrapper(
             cell_bw, output_keep_prob=self.keep_prob)
 
-        print("_create_blstm_cell function worked")
         return cell_fw, cell_bw
 
     def _create_forward(self):
         # single layer bgru encoder
         with tf.variable_scope('bigru', reuse=tf.AUTO_REUSE):
-            # cell_fw, cell_bw = self._create_bgrucell()
+            #cell_fw, cell_bw = self._create_bgrucell()
             cell_fw, cell_bw = self._create_blstm_cell()
             self.passage_states, _ = tf.nn.bidirectional_dynamic_rnn(
                 cell_fw=cell_fw,
@@ -198,7 +202,8 @@ class Model:
             """
             self.passage_states = tf.concat(self.passage_states, axis=-1)
             self.query_states = tf.concat(self.query_states, axis=-1)
-            # print("shape of self.passage_states", self.passage_states.shape.as_list())
+            #print("shape of self.passage_states", 
+            #      self.passage_states.shape.as_list())
 
         print("bgru encoder layer worked")
 
@@ -207,24 +212,56 @@ class Model:
             self.passage_vec, _ = self_attention(
                 inputs=self.passage_states,
                 da=self.att_da, r=self.att_r,
-                batch_size=self.batch_size,
-                reuse=tf.AUTO_REUSE)
-
+                batch_size=self.batch_size)
             self.query_vec, _ = self_attention(
                 inputs=self.query_states,
                 da=self.att_da, r=self.att_r,
-                batch_size=self.batch_size,
-                reuse=tf.AUTO_REUSE)
-
+                batch_size=self.batch_size)
+            # passage_vec, query_vec == [batch_size, r, contex_dim]
         print("self-attention layer worked")
-
-        # Multi Layer Perceptron
-        with tf.variable_scope('MLP', reuse=tf.AUTO_REUSE):
+        """
+        with tf.variable_scope('Match', reuse=tf.AUTO_REUSE):
+            #self.mlp_inputs = bidaf(
+            #    self.passage_vec, self.query_vec, self.batch_size)
+            # match_outputs.shape == [batch_size, seq_len, contex_dim*2]
+            self.match_outputs = bidaf(
+                self.passage_states, self.query_states, self.batch_size)
             self.mlp_inputs = tf.concat(
-                [self.passage_vec, self.query_vec], axis=-1)
-            #print("self.p_fs.shape == ", self.ps_last.shape.as_list())
+                [self.passage_vec, self.query_vec, self.match_outputs],
+                axis=-1)
+            # mlp_inputs.shape == [batch_size, seq_len, contex_dim*4]
+            print("mlp_inputs.shape == ", self.mlp_inputs.shape.as_list())
+        print("Match layer worked")
+        """
+
+        with tf.variable_scope('aggregation_layer', reuse=tf.AUTO_REUSE):
+            cell_fw, cell_bw = self._create_blstm_cell()
+            self.p_encode, _ = tf.nn.bidirectional_dynamic_rnn(
+                cell_fw=cell_fw,
+                cell_bw=cell_bw,
+                inputs=self.passage_vec,
+                dtype=tf.float32,
+                sequence_length=self.passage_length)
+            self.q_encode, _ = tf.nn.bidirectional_dynamic_rnn(
+                cell_fw=cell_fw,
+                cell_bw=cell_bw,
+                inputs=self.query_vec,
+                dtype=tf.float32,
+                sequence_length=self.query_length)
+
+            p_last = tf.concat(
+                (self.p_encode[0][:, -1, :], self.p_encode[1][:, -1, :]), -1)
+            q_last = tf.concat(
+                (self.q_encode[0][:, -1, :], self.q_encode[0][:, -1, :]), -1)
+            # mlp_inputs.shape == [batch_size, rnn_cell_size*4]
+            self.mlp_inputs = tf.concat([p_last, q_last], axis=-1)
+
+            # Multi Layer Perceptron
+        with tf.variable_scope('MLP', reuse=tf.AUTO_REUSE):
             #self.mlp_inputs = tf.concat(
-            #    (self.ps_last, self.qs_last), axis=-1)
+            #    [self.passage_vec, self.query_vec], axis=-1)
+            #print("self.p_fs.shape == ", self.ps_last.shape.as_list())
+
             self.logits = mlp(
                 mlp_inputs=self.mlp_inputs,
                 mlp_hidden_size=self.mlp_hidden_size,
@@ -236,7 +273,6 @@ class Model:
         with tf.name_scope("prediction"):
             prob = tf.nn.softmax(self.logits)
             self.predictions = tf.argmax(prob, 1)
-            #print("shape of self.predictions == ", self.predictions.shape.as_list())
             #print("shape of self.labels == ", self.labels.shape.as_list())
             #correct = tf.nn.in_top_k(self.logits, self.labels, 1)
             correct = tf.equal(self.predictions, self.labels)

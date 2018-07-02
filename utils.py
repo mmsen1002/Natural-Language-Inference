@@ -244,13 +244,14 @@ def read_dataset(passage_filename, passage_len_filename,
     if is_train and is_shuffle:
         # shuffle data
         length = len(passage)
+        point = int(length/config.batch_size)*config.batch_size
         indices = np.random.permutation(np.arange(length))
-        passage = passage[indices]
-        passage_len = passage_len[indices]
+        passage = passage[indices][:point]
+        passage_len = passage_len[indices][:point]
 
-        query = query[indices]
-        query_len = query_len[indices]
-        label = label[indices]
+        query = query[indices][:point]
+        query_len = query_len[indices][:point]
+        label = label[indices][:point]
 
     if is_train:
         pt = int(len(passage)*0.95)

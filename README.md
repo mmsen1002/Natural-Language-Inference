@@ -1,5 +1,4 @@
 # Natural-Language-Inference
-NLI_by_shenjikun
 
 ### Useage ###
 (1) data process
@@ -15,13 +14,5 @@ python main.py -train
 
 (4)test
 python main.py -test
-
-## data ##
-./data/atec/train
-#
-./data/atec/save/word_box.txt
-./data/atec/save/sentence_for_train_embedding.txt
-./data/atec/save/word2id.pkl
-./data/atec/save/id2word.pkl
 
 

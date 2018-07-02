@@ -2,17 +2,17 @@
 
 ### Useage ###
 (1) data process
-python utils.py -div
-python utils.py -vocab
-python utils.py -trans
+    python utils.py -div
+    python utils.py -vocab
+    python utils.py -trans
 
 (2) train word embedding
-python word2vec.py
+    python word2vec.py
 
 (3) train
-python main.py -train
+    python main.py -train
 
 (4)test
-python main.py -test
+   python main.py -test
 
 

@@ -2,7 +2,7 @@
 
 ### Useage ###
 (1) data process
-    python utils.py -div
+    python utils.py -div\n
     python utils.py -vocab
     python utils.py -trans
 

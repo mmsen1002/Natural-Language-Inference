@@ -3,7 +3,7 @@ import pickle
 import numpy as np
 from gensim.models import Word2Vec
 from gensim.models.word2vec import LineSentence
-from config import WORD_VOCAB_SIZE, WORD_EMBED_SIZE
+import config
 
 
 def load_id2word(filename):
@@ -15,29 +15,37 @@ def load_id2word(filename):
 
 
 def word2vec(corpus_filename, word2vec_filename,
-             id2word_filename, embedding_size):
+             id2word_filename, embed_size, word_vocab_size):
     """
     train word2vec
     """
     sentences = LineSentence(corpus_filename)
 
-    model = Word2Vec(sentences, sg=1, size=embedding_size,
+    model = Word2Vec(sentences, sg=1, size=embed_size,
                      window=5, min_count=5, workers=4)
     word_vectors = model.wv
     del model
 
     id2word = load_id2word(id2word_filename)
-    if WORD_VOCAB_SIZE != len(id2word):
-        print("VOCAB_SIZE == %d" % WORD_VOCAB_SIZE)
+    if word_vocab_size != len(id2word):
+        print("VOCAB_SIZE == %d" % word_vocab_size)
         print("length of id2word %d" % len(id2word))
         exit()
 
     embedding_lst = []
-    embedding_lst.append(-1+2*(np.random.rand(WORD_EMBED_SIZE))) # for UNK
-    embedding_lst.append(np.array([0]*WORD_EMBED_SIZE)) # for PAD
-    for i in range(WORD_VOCAB_SIZE):
+    embedding_lst.append(-1+2*(np.random.rand(embed_size))) # for UNK
+    embedding_lst.append(np.array([0]*embed_size)) # for PAD
+
+    count = 0
+    for i in range(word_vocab_size):
         if i > 1:
-            embedding_lst.append(word_vectors[id2word[i]])
+            if id2word[i] in word_vectors:
+                embedding_lst.append(word_vectors[id2word[i]])
+            else:
+                count += 1
+                embedding_lst.append(-1+2*(np.random.rand(embed_size)))
+    print("%d words out of word2vec"%count)
+    assert len(embedding_lst) == len(id2word)
 
     out = open(word2vec_filename, 'wb')
     pickle.dump(np.array(embedding_lst), out, 0)
@@ -56,12 +64,23 @@ def sample_word_embedding(word2vec_filename):
 
 
 if __name__ == '__main__':
-
+    """
     word2vec(
         corpus_filename='./data/ccks/save/sentence_for_train_embedding.txt',
-        word2vec_filename='./data/ccks/save/embed_matrix.pkl',
+        word2vec_filename='./data/ccks/embedding/gensim_word2vec/embed_matrix.pkl',
         id2word_filename='./data/ccks/save/id2word.pkl',
-        embedding_size=WORD_EMBED_SIZE)
+        embed_size=config.word_embed_size,
+        word_vocab_size=config.word_vocab_size)
 
     sample_word_embedding(
-        word2vec_filename='./data/ccks/save/embed_matrix.pkl')
+        word2vec_filename='./data/ccks/embedding/gensim_word2vec/embed_matrix.pkl')
+    """
+    word2vec(
+        corpus_filename='./data/atec/save/sentence_for_train_embedding.txt',
+        word2vec_filename='./data/atec/embedding/gensim_word2vec/embed_matrix.pkl',
+        id2word_filename='./data/atec/save/id2word.pkl',
+        embed_size=config.word_embed_size,
+        word_vocab_size=config.word_vocab_size)
+
+    sample_word_embedding(
+        word2vec_filename='./data/atec/embedding/gensim_word2vec/embed_matrix.pkl')

@@ -9,8 +9,10 @@ import numpy as np
 import tensorflow as tf
 from collections import Counter
 from collections import OrderedDict
-from config import WORD_VOCAB_SIZE, MAX_LEN
+import config
 
+
+jieba.load_userdict("./data/atec/origin_data/usr_dict.txt")
 
 def mkfile(filename):
     file_dir = os.path.split(filename)[0]
@@ -21,8 +23,9 @@ def mkfile(filename):
 
 
 def corpus_filter(string):
-    ret = re.sub('\d+(\.\d+)?', '#', string)
-    punct = '！？。：；，、·~`……【】《》{}+“”‘’（）——,.!?:;()<>/@$%&*\"\''
+    #ret = re.sub('\d+(\.\d+)?', '#', string)
+    ret = string.replace('***', '*')
+    punct = '！？。：；，、·~`……【】《》{}+“”‘’（）——,.!?:;()<>/@$%&\"\''
     ret = re.sub(r'[{}]+'.format(punct), ' ', ret)
     return re.sub(' ', '', ret)
 
@@ -31,6 +34,7 @@ def pos_seg(sentence):
     tokens = []
     words = []
     pos = []
+    #jieba.load_userdict("./data/ccks/origin_data/usr_dict.txt")
     for item in psg.cut(corpus_filter(sentence)):
         tokens.append(item.word.strip() + '/' + item.flag.strip())
         words.append(item.word)
@@ -43,22 +47,18 @@ def write_pickle(filename, _data):
         pickle.dump(_data, wf, 0)
 
 
-def devide_data(read_filename, is_train=True):
-    if is_train:
-        fold_name = './data/ccks/train/'
-    else:
-        fold_name = './data/ccks/dev/'
+def devide_data(read_filename, train_folder, save_folder, is_train=True):
 
-    mkfile(fold_name + 'passage.txt')
-    passage_file = open(fold_name + 'passage.txt', 'w')
-    mkfile(fold_name + 'query.txt')
-    query_file = open(fold_name + 'query.txt', 'w')
-    mkfile(fold_name + 'label.txt')
-    label_file = open(fold_name + 'label.txt', 'w')
-    mkfile(fold_name + 'label.pkl')
-    label_pkl_file = open(fold_name + 'label.pkl', 'wb')
-    mkfile('./data/ccks/save/sentence_for_train_embedding.txt')
-    sent_file = open('./data/ccks/save/sentence_for_train_embedding.txt', 'a+')
+    mkfile(train_folder+'passage.txt')
+    passage_file = open(train_folder+'passage.txt', 'w')
+    mkfile(train_folder+'query.txt')
+    query_file = open(train_folder+'query.txt', 'w')
+    mkfile(train_folder+'label.txt')
+    label_file = open(train_folder+'label.txt', 'w')
+    mkfile(train_folder+'label.pkl')
+    label_pkl_file = open(train_folder+'label.pkl', 'wb')
+    mkfile(save_folder+'sentence_for_train_embedding.txt')
+    sent_file = open(save_folder+'sentence_for_train_embedding.txt', 'w')
 
     min_len = 10000
     max_len = 0
@@ -67,28 +67,32 @@ def devide_data(read_filename, is_train=True):
     pos_box = []
 
     with open(read_filename, 'r', encoding='utf-8') as rf:
-        for line in rf.readlines():
+        for idx, line in enumerate(rf.readlines()):
             if is_train:
-                query_1, query_2, label = line.strip().split('\t')
+                line_sp = line.strip().split('\t')
+                if len(line_sp) != 3:
+                    print(idx, line)
+                    break
+                query_1, query_2, label = line_sp
                 labels.append(int(label))
-
-                p_with_pos, p, p_pos = pos_seg(query_1)
-                q_with_pos, q, q_pos = pos_seg(query_2)
-                word_box.extend(p)
-                word_box.extend(q)
-                pos_box.extend(p_pos)
-                pos_box.extend(q_pos)
-
-                p_str = ' '.join(p)
-                q_str = ' '.join(q)
-                print(p_str.strip(), file=sent_file)
-                print(q_str.strip(), file=sent_file)
                 print(label.strip(), file=label_file)
+
             else:
-                query_1, query_2, = line.strip().split('\t')
+                query_1, query_2 = line.strip().split('\t')
                 labels.append(0)
-                p_with_pos, _, _ = pos_seg(query_1)
-                q_with_pos, _, _ = pos_seg(query_2)
+
+            p_with_pos, p, p_pos = pos_seg(query_1)
+            q_with_pos, q, q_pos = pos_seg(query_2)
+
+            word_box.extend(p)
+            word_box.extend(q)
+            pos_box.extend(p_pos)
+            pos_box.extend(q_pos)
+
+            p_str = ' '.join(p)
+            q_str = ' '.join(q)
+            print(p_str.strip(), file=sent_file)
+            print(q_str.strip(), file=sent_file)
 
             min_len = min((min_len, len(p_with_pos), len(q_with_pos)))
             max_len = max((max_len, len(p_with_pos), len(q_with_pos)))
@@ -107,24 +111,24 @@ def devide_data(read_filename, is_train=True):
     label_pkl_file.close()
     sent_file.close()
 
+    with open(save_folder+'word_box.txt', 'w',) as wbx_file:
+        for _w in word_box:
+            print(_w.strip(), file=wbx_file)
+    with open(save_folder+'pos_box.txt', 'w',) as pbx_file:
+        for _p in pos_box:
+            print(_p.strip(), file=pbx_file)
+
     print("min length: %d" % min_len)
     print("max length: %d" % max_len)
 
-    if is_train:
-        build_vocab_and_save(
-            word_box,
-            './data/ccks/save/word2id.pkl',
-            './data/ccks/save/id2word.pkl')
-        build_vocab_and_save(
-            pos_box,
-            './data/ccks/save/pos2id.pkl',
-            './data/ccks/save/id2pos.pkl',
-            is_pos=True)
 
-
-def build_vocab_and_save(token_box, token2id_file_name,
-                         id2token_file_name, is_pos=False):
+def build_vocab(token_box_filename, token2id_file_name,
+                id2token_file_name, is_pos=False):
     token2id = OrderedDict()
+    token_box = []
+    with open(token_box_filename, 'r') as _rf:
+        for line in _rf.readlines():
+            token_box.append(line.strip())
 
     if is_pos:
         token_num = Counter(token_box).most_common()
@@ -132,7 +136,7 @@ def build_vocab_and_save(token_box, token2id_file_name,
         token2id['UNK_POS'] = 0
         token2id['PAD_POS'] = 1
     else:
-        token_num = Counter(token_box).most_common(WORD_VOCAB_SIZE-2)
+        token_num = Counter(token_box).most_common(config.word_vocab_size-2)
         print("length of total_word_dict: %d" % (len(token_num)+2))
         token2id['UNK'] = 0
         token2id['PAD'] = 1
@@ -166,7 +170,10 @@ def transfer_to_id(read_file_name, write_file_name,
             sentence = []
             pos = []
             for token in line.split():
-                word, tag = token.split('/')
+                try:
+                    word, tag = token.split('/')
+                except ValueError:
+                    print(line)
                 if word not in word2id:
                     sentence.append(word2id['UNK'])
                     pos.append(pos2id['UNK_POS'])
@@ -178,12 +185,12 @@ def transfer_to_id(read_file_name, write_file_name,
                         pos.append(pos2id['UNK_POS'])
 
             real_length = len(line.split())
-            if real_length > MAX_LEN:
-                sentence = sentence[:MAX_LEN]
-                pos = pos[:MAX_LEN]
-                real_length = MAX_LEN
-            elif real_length < MAX_LEN:
-                for _ in range(MAX_LEN - real_length):
+            if real_length > config.max_seq_len:
+                sentence = sentence[:config.max_seq_len]
+                pos = pos[:config.max_seq_len]
+                real_length = config.max_seq_len
+            elif real_length < config.max_seq_len:
+                for _ in range(config.max_seq_len - real_length):
                     sentence.append(word2id['PAD'])
                     pos.append(pos2id['PAD_POS'])
 
@@ -204,40 +211,33 @@ def transfer_to_id(read_file_name, write_file_name,
         pickle.dump(np.array(length_lst), length_file, 0)
 
 
-def read_dataset(
-        passage_filename, passage_pos_filename, passage_len_filename,
-        query_filename, query_pos_filename, query_len_filename,
-        label_filename, batch_size, is_train=True, is_shuffle=True):
+def read_dataset(passage_filename, passage_len_filename,
+                 query_filename, query_len_filename,
+                 label_filename, batch_size, is_train=True,
+                 is_shuffle=True):
 
     # read data from pkl file
     passage_file = open(passage_filename, 'rb')
-    passage_pos_file = open(passage_pos_filename, 'rb')
     passage_len_file = open(passage_len_filename, 'rb')
 
     query_file = open(query_filename, 'rb')
-    query_pos_file = open(query_pos_filename, 'rb')
     query_len_file = open(query_len_filename, 'rb')
 
     label_file = open(label_filename, 'rb')
 
     # load data with type of np.ndarray
     passage = pickle.load(passage_file)
-    passage_pos = pickle.load(passage_pos_file)
     passage_len = pickle.load(passage_len_file)
 
     query = pickle.load(query_file)
-    query_pos = pickle.load(query_pos_file)
     query_len = pickle.load(query_len_file)
     label = pickle.load(label_file)
-    assert len(passage) == len(passage_pos) == len(passage_len) \
-            == (len(query)) == len(query_pos) == len(query_len) \
-            == len(label)
+    assert len(passage) == len(passage_len) \
+            == (len(query)) == len(query_len) == len(label)
 
     passage_file.close()
-    passage_pos_file.close()
     passage_len_file.close()
     query_file.close()
-    query_pos_file.close()
     query_len_file.close()
     label_file.close()
 
@@ -246,24 +246,22 @@ def read_dataset(
         length = len(passage)
         indices = np.random.permutation(np.arange(length))
         passage = passage[indices]
-        passage_pos = passage_pos[indices]
         passage_len = passage_len[indices]
 
         query = query[indices]
-        query_pos = query_pos[indices]
         query_len = query_len[indices]
         label = label[indices]
 
     if is_train:
-        pt = int(len(passage)*0.9)
+        pt = int(len(passage)*0.95)
         # create dataset
         train_dataset = tf.data.Dataset.from_tensor_slices(
-            (passage[:pt], passage_pos[:pt], passage_len[:pt],
-             query[:pt], query_pos[:pt], query_len[:pt], label[:pt]))
+            (passage[:pt], passage_len[:pt],
+             query[:pt], query_len[:pt], label[:pt]))
 
         valid_dataset = tf.data.Dataset.from_tensor_slices(
-            (passage[pt:], passage_pos[pt:], passage_len[pt:],
-             query[pt:], query_pos[pt:], query_len[pt:], label[pt:]))
+            (passage[pt:], passage_len[pt:],
+             query[pt:], query_len[pt:], label[pt:]))
 
         train_dataset = train_dataset.shuffle(90000).batch(batch_size)
         valid_dataset = valid_dataset.shuffle(10000).batch(batch_size)
@@ -271,8 +269,8 @@ def read_dataset(
         dataset = (train_dataset, valid_dataset)
     else:
         dataset = tf.data.Dataset.from_tensor_slices(
-            (passage, passage_pos, passage_len,
-             query, query_pos, query_len, label))
+            (passage, passage_len,
+             query, query_len, label))
         dataset = dataset.batch(batch_size)
 
     return dataset
@@ -305,16 +303,30 @@ def check_data(filename):
     queries = pickle.load(pkl_file)
     pkl_file.close()
     print(filename, " shape of queries is ", np.shape(queries))
-    print(queries[4])
+    print(queries[520])
 
 
 if __name__ == '__main__':
+    """
     try:
         option = sys.argv[1]
-        if option == "-d":
-            devide_data('./data/ccks/origin_data/train.txt', is_train=True)
-            devide_data('./data/ccks/origin_data/dev.txt', is_train=False)
-        elif option == "-t":
+        if option == "-div":
+            devide_data(read_filename='./data/ccks/origin_data/train.txt',
+                        fold_name='./data/ccks/train/')
+            devide_data(read_filename='./data/ccks/origin_data/dev.txt',
+                        fold_name='./data/ccks/dev/',
+                        is_train=False)
+        elif option == "-vocab":
+            build_vocab(
+                token_box_filename='./data/ccks/save/word_box.txt',
+                token2id_file_name='./data/ccks/save/word2id.pkl',
+                id2token_file_name='./data/ccks/save/id2word.pkl')
+            build_vocab(
+                token_box_filename='./data/ccks/save/pos_box.txt',
+                token2id_file_name='./data/ccks/save/pos2id.pkl',
+                id2token_file_name='./data/ccks/save/id2pos.pkl',
+                is_pos=True)
+        elif option == "-trans":
             with open('./data/ccks/save/word2id.pkl', 'rb') as word2id_file:
                 _word2id = pickle.load(word2id_file)
             with open('./data/ccks/save/pos2id.pkl', 'rb') as pos2id_file:
@@ -351,7 +363,7 @@ if __name__ == '__main__':
                 word2id=_word2id,
                 pos2id=_pos2id)
 
-        elif option == "-c":
+        elif option == "-check":
             check_data('./data/ccks/train/passage.pkl')
             check_data('./data/ccks/train/passage_pos.pkl')
             check_data('./data/ccks/train/query.pkl')
@@ -364,12 +376,72 @@ if __name__ == '__main__':
 
         else:
             print("wrong option")
-            print("use -devide to devide train and test dataset")
+            print("use -div to devide train and test dataset")
             print("use -vocab to build vocabulary and translate words to ids")
+            print("use -trans to translate words to ids")
             print("use -check to check train and test data in ids")
 
     except IndexError:
         print("wrong option")
-        print("use -d to devide train and test dataset")
-        print("use -t to build vocabulary and translate words to ids")
-        print("use -c to check train and test data in ids")
+        print("use -div to devide train and test dataset")
+        print("use -vocab to build vocabulary and translate words to ids")
+        print("use -trans to translate words to ids")
+        print("use -check to check train and test data in ids")
+
+    """
+    try:
+        option = sys.argv[1]
+        if option == "-div":
+            devide_data(read_filename='./data/atec/origin_data/atec_train.csv',
+                        train_folder='./data/atec/train/',
+                        save_folder='./data/atec/save/')
+        elif option == "-vocab":
+            build_vocab(
+                token_box_filename='./data/atec/save/word_box.txt',
+                token2id_file_name='./data/atec/save/word2id.pkl',
+                id2token_file_name='./data/atec/save/id2word.pkl')
+            build_vocab(
+                token_box_filename='./data/atec/save/pos_box.txt',
+                token2id_file_name='./data/atec/save/pos2id.pkl',
+                id2token_file_name='./data/atec/save/id2pos.pkl',
+                is_pos=True)
+        elif option == "-trans":
+            with open('./data/atec/save/word2id.pkl', 'rb') as word2id_file:
+                      _word2id = pickle.load(word2id_file)
+            with open('./data/atec/save/pos2id.pkl', 'rb') as pos2id_file:
+                      _pos2id = pickle.load(pos2id_file)
+            # train dataset
+            transfer_to_id(
+                read_file_name='./data/atec/train/passage.txt',
+                write_file_name='./data/atec/train/passage.pkl',
+                length_file_name='./data/atec/train/passage_length.pkl',
+                pos_file_name='./data/atec/train/passage_pos.pkl',
+                word2id=_word2id,
+                pos2id=_pos2id)
+            transfer_to_id(
+                read_file_name='./data/atec/train/query.txt',
+                write_file_name='./data/atec/train/query.pkl',
+                length_file_name='./data/atec/train/query_length.pkl',
+                pos_file_name='./data/atec/train/query_pos.pkl',
+                word2id=_word2id,
+                pos2id=_pos2id)
+        elif option == "-check":
+            check_data('./data/atec/train/passage.pkl')
+            check_data('./data/atec/train/passage_pos.pkl')
+            check_data('./data/atec/train/query.pkl')
+            check_data('./data/atec/train/query_pos.pkl')
+
+        else:
+            print("wrong option")
+            print("use -div to devide train and test dataset")
+            print("use -vocab to build vocabulary and translate words to ids")
+            print("use -trans to translate words to ids")
+            print("use -check to check train and test data in ids")
+
+    except IndexError:
+        print("wrong option")
+        print("use -div to devide train and test dataset")
+        print("use -vocab to build vocabulary and translate words to ids")
+        print("use -trans to translate words to ids")
+        print("use -check to check train and test data in ids")
+

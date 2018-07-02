@@ -1,19 +1,21 @@
 # encoding:utf-8
 
-WORD_VOCAB_SIZE = 1500
-WORD_EMBED_SIZE = 100
-POS_VOCAB_SIZE = 51
-POS_EMBED_SIZE = 32
-BATCH_SIZE = 100
-RNN_CELL_SIZE = 150
-RNN_LAYERS = 1
-MAX_LEN = 25
-ATT_DA = 75
-ATT_R = 1
-MLP_HIDDEN_SIZE = 300
-NUM_CLASS = 2
-KEEP_PROB = 0.8
+vocab_min_count = 10
+word_vocab_size = 2500
+word_embed_size = 64
+batch_size = 50
+rnn_cell_size = 128
+max_seq_len = 60
+att_da = 64
+att_r = 64
+mlp_hidden_size = 256
+num_class = 2
+keep_prob = 0.80
+keep_prob1 = 0.75
+keep_prob2 = 0.75
+keep_prob3 = 0.75
+keep_prob4 = 0.75
 # LAMBDA_L2 = 1.2e-5
-LAMBDA_L2 = 0.0
-LEARNING_RATE = 1.0e-3
-EPOCH = 30
+lambda_l2 = 0.0
+learning_rate = 1.0e-3
+epoch_size = 30
